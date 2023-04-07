@@ -28,6 +28,91 @@ HOST = 'localhost'
 BUF_SZ = 4096
 SERVER_ADDR = ('css1.seattleu.edu', 80)
 TIMEOUT = 5 # seconds
+SUCCESS = 200
+NOT_FOUND = 404
+SERVER_ERROR = 500
+
+class HTTPprotocol(object):
+    """
+    Helper class to assist in handling the HTTP protocol.
+    It has methods create http requests and responses.
+    """
+    delimiter = '\r\n'
+    header_delimiter = 2 * delimiter
+    supported_version = 1.1
+
+    @staticmethod
+    def is_supported_version(request_version: float):
+        return request_version <= supported_version
+
+
+class HTTPrequest(object):
+    def __init__(self, method: str, uri: str, headers: dict, version = HTTPprotocol.supported_version: float):
+        # process raw_request into the http request variables
+        self.method = method
+        self.uri = uri
+        self.headers = headers
+        self.version = version
+        self.body = ''
+    
+    def __init__(self, raw_request: str):
+        # process raw_request into the http request variables
+        tokens = raw_request.split(HTTPprotocol.delimiter)
+        method, url, raw_version = tokens[0].split(' ')
+        self.__init__(method, url, {}, raw_version)
+    
+    def header_contains(self, key: str):
+        return key in self.headers
+    
+    def set_body(self, body: str):
+        self.body = body
+
+    def get_method(self):
+        return self.method
+    
+    def get_version(self):
+        return self.version
+    
+    def get_uri(self):
+        return self.uri
+    
+    def get_http_request(self):
+        request = f'{self.method} {self.uri} HTTP/{self.version}{HTTPprotocol.delimiter}'
+        for key, value in headers.items():
+            request += f'{key}: {value}{HTTPprotocol.delimiter}'
+        request += f'{HTTPprotocol.delimiter}{self.body}'
+        return request
+
+
+class HTTPresponse(object):
+
+    status_msgs = {
+        200: 'OK',
+        404: 'Not Found',
+        500: 'Internal Error',
+    }
+
+    def __init__(self, status_code: int):
+        # put the raw response together into an http response
+        self.status_code = status_code
+        self.status_msg = status_msgs[status_code]
+        self.version = HTTPprotocol.supported_version
+        self.headers = []
+        self.body = ''
+    
+    def set_headers(self, header_list: list):
+        self.headers = header_list
+    
+    def set_body(self, body: str):
+        self.body = body
+    
+    def get_http_response(self):
+        response = f'HTTP/{self.version} {self.status_code} {self.status_msg}{HTTPprotocol.delimiter}'
+        for header in self.headers:
+            response += f"{header}{HTTPprotocol.delimiter}"
+        response += f'{HTTPprotocol.delimiter}{self.body}'
+        return response
+
 
 class ProxyServer(object):
     """
@@ -61,30 +146,41 @@ class ProxyServer(object):
             try:
                 self.log(f' ******************** Ready to serve ********************')
                 client, client_addr = self.listener.accept()
-                self.log(f'Received a client connection from {client_addr}')
                 self.handle_connection(client)
-                self.log(f'All done! Closing socket...\n\n')
-                client.close()
             except Exception as e:
                 print(str(e))
                 self.log(f'\nServer is shutting down...\n')
                 exit(0)
     
     def handle_connection(self, client: socket):
+        self.log(f'Received a client connection from {client_addr}')
         # receive message
-
-        # parse message
-
-        # verify if version is supported
-
-        # verify if method is supported
-
-        # handle request based on method
-
         self.log(f'Receiving message from client')
-        client_msg = self.receive(client)
+        # client_msg = self.receive(client)
+        client_msg = client.recv(BUF_SZ)
         self.log(client_msg.decode('utf-8'))
+        # parse message
+        http_resquest = HTTPrequest(client_msg.decode('utf-8'))
+        # verify if version is supported
+        if not HTTPprotocol.is_supported_version(http_resquest.get_version()):
+            # build response for invalid version
+            http_response = HTTPresponse(SERVER_ERROR)
+        else:
+            # handle request based on method
+            if http_resquest.get_method() == 'GET':
+                self.handle_get_request(http_request)
+            else:
+                # build response for invalid method
+                http_response = HTTPresponse(SERVER_ERROR)
+        # just ECHO for now
         self.send(client, client_msg.decode('utf-8'))
+
+        # close connection
+        self.log(f'All done! Closing socket...\n\n')
+        client.close()
+    
+    def handle_get_request(self, http_request: HTTPrequest):
+        raise NotImplemented
 
     def contact_server(self, client_request):
         with socket(AF_INET, SOCK_STREAM) as proxy_sock:
