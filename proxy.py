@@ -33,6 +33,12 @@ NOT_FOUND = 404
 SERVER_ERROR = 500
 
 class Cache(object):
+    """
+    Static class that defines methods to store and read files from cache.
+    It also has helper functions to get the formatted path and check if
+    the file already exists in cache.
+    This Cache class is not generic, but built to work with the Web Proxy.
+    """
     root_path = './cache'
 
     def __init__(self):
@@ -42,29 +48,60 @@ class Cache(object):
 
     @staticmethod
     def get_path(host: str, path: str):
+    """
+    Helper function that replaces the '/' characters in the path with '$'
+    to create a standard file naming system for caching.
+
+    :param host: the host in the url
+    :param path: the path in the url
+    :return: the formatted file path
+    """
+        # Note: consulted with Justin Thoreson for how to handle
+        # the file path for caching
         raw_path = f'{host}{path}'.replace('/', '$')
         return Path(f'{Cache.root_path}/{raw_path}')
 
     @staticmethod
     def contains(host: str, path: str):
+    """
+    Helper function to check if a file exists in cache.
+
+    :param host: the host in the url
+    :param path: the path in the url
+    :return: true if the file is alredy cached
+    """
         file_path = Cache.get_path(host, path)
         return file_path.exists()
     
     @staticmethod
     def cache_file(host: str, path: str, payload: str):
+    """
+    Function to store file in cache.
+
+    :param host: the host in the url
+    :param path: the path in the url
+    :param payload: the contents of the file
+    """
         file_path = Cache.get_path(host, path)
         file_path.write_text(payload)
     
     @staticmethod
     def read_cache(host: str, path: str):
+    """
+    Function to read contents of file in cache.
+    It is assumed that it has been verified that the file exists in cache.
+
+    :param host: the host in the url
+    :param path: the path in the url
+    :return: the contents of the file
+    """
         file_path = Cache.get_path(host, path)
         return file_path.read_text()
 
 
 class HTTPprotocol(object):
     """
-    Helper class to assist in handling the HTTP protocol.
-    It has methods create http requests and responses.
+    Helper static class to assist in handling the HTTP protocol.
     """
     delimiter = '\r\n'
     header_delimiter = 2 * delimiter
@@ -72,10 +109,22 @@ class HTTPprotocol(object):
 
     @staticmethod
     def is_supported_version(request_version: float):
+    """
+    Helper function to verify if the version is supported.
+
+    :param request_version: the version specified in the HTTP request
+    :return: true if request_version is supported
+    """
         return request_version <= HTTPprotocol.supported_version
 
 
 class HTTPrequest(object):
+    """
+    Creates HTTP request following the HTTP protocol.
+    It does not create a custom constructor, but two methods to populate variables
+    from a raw string or with the parsed values.
+    It declares accessors and modifiers for instance variables.
+    """
     def __repr__(self):
         request = f'{self.method} {self.uri} HTTP/{self.version}{HTTPprotocol.delimiter}'
         for key, value in self.headers.items():
@@ -83,7 +132,14 @@ class HTTPrequest(object):
         request += f'{HTTPprotocol.delimiter}{self.body}'
         return request
     
-    def instantiate(self, method: str, uri: str, version = HTTPprotocol.supported_version):
+    def populate(self, method: str, uri: str, version = HTTPprotocol.supported_version):
+        """
+        Update values of HTTPrequest. Heades and body and left empty.
+
+        :param method: HTTP method
+        :param uri: HTTP uri
+        :param version: HTTP version
+        """
         # process raw_request into the http request variables
         self.method = method
         self.uri = uri
@@ -92,40 +148,61 @@ class HTTPrequest(object):
         self.body = ''
     
     def build_from_raw(self, raw_request: str):
+        """
+        Parses a raw string to populate HTTP request values.
+
+        :param raw_request: a string containing the HTTP request
+        """
         # process raw_request into the http request variables
         tokens = raw_request.split(HTTPprotocol.delimiter)
         method, url, raw_version = tokens[0].split(' ')
         version = raw_version.split('HTTP/')[1]
-        self.instantiate(method, url, version)
-
-    def header_contains(self, key: str):
-        return key in self.headers
+        self.populate(method, url, version)
     
     def add_headers(self, *kvp):
+        """
+        Adds a list of key-value pairs to the HTTP request headers.
+        Expected as input: key (str), followed by respective value
+
+        :param *kvp: key-value pairs
+        """
         for i in range(0, len(kvp), 2):
             self.headers[kvp[i]] = kvp[i+1]
 
     def append_headers(self, headers_dict: dict):
+        """
+        Appends a headers dictionary to the instance headers.
+
+        :param headers_dict: to be added to existing dictionary
+        """
         self.headers.update(headers_dict)
 
     def set_body(self, body: str):
+        """ Modifier for HTTP request body """
         self.body = body
 
     def get_method(self):
+        """ Accessor for HTTP method """
         return self.method
     
     def get_version(self):
+        """ Accessor for HTTP version """
         return self.version
     
     def get_uri(self):
+        """ Accessor for HTTP uri """
         return self.uri
     
     def get_headers(self):
+        """ Accessor for HTTP headers """
         return self.headers
 
 
 class HTTPresponse(object):
-
+    """
+    Creates HTTP response following the HTTP protocol.
+    It declares accessors and modifiers for instance variables.
+    """
     status_msgs = {
         200: 'OK',
         404: 'Not Found',
@@ -148,13 +225,25 @@ class HTTPresponse(object):
         return response
     
     def add_headers(self, *kvp):
+        """
+        Adds a list of key-value pairs to the HTTP response headers.
+        Expected as input: key (str), followed by respective value
+
+        :param *kvp: key-value pairs
+        """
         for i in range(0, len(kvp), 2):
             self.headers[kvp[i]] = kvp[i+1]
 
     def append_headers(self, headers_dict: dict):
+        """
+        Appends a headers dictionary to the instance headers.
+
+        :param headers_dict: to be added to existing dictionary
+        """
         self.headers.update(headers_dict)
     
     def set_body(self, body: str):
+        """ Modifier for HTTP response body """ 
         self.body = body
 
 
@@ -175,6 +264,12 @@ class ProxyServer(object):
         self.start_proxy()
     
     def create_socket(self, port: int):
+        """
+        Creates a socket that listenst at (HOST, port)
+
+        :param port: the port number that the socket will listen at
+        :return: the socket and its address
+        """
         try:
             listener = socket(AF_INET, SOCK_STREAM)
             address = (HOST, port)
@@ -186,6 +281,7 @@ class ProxyServer(object):
             exit(1)
     
     def start_proxy(self):
+        """ Proxy loop that listens to incoming connections """
         while True:
             try:
                 self.log(f' ******************** Ready to serve ********************')
@@ -200,6 +296,12 @@ class ProxyServer(object):
                 exit(1)
     
     def handle_connection(self, client: socket):
+        """ 
+        Communicates with client to fulfill the incoming requests using the HTTP protocol.
+        It only supports GET operations and it checks the cache before contacting the web server.
+
+        :param client: socket from client connection
+        """
         headers, payload = self.receive(client)
         self.log(f'Received a message from this client: {headers}{payload}')
 
@@ -222,6 +324,12 @@ class ProxyServer(object):
         client.close()
     
     def handle_get_request(self, http_request: HTTPrequest):
+        """
+        Fulfill client's HTTP GET request
+        
+        :param http_request: the client's HTTP request
+        :retur: an HTTP response
+        """
         parsed_url = urlparse(http_request.get_uri())
         host = parsed_url.hostname
         path = parsed_url.path if len(parsed_url.path) > 0 else '/'
@@ -231,6 +339,13 @@ class ProxyServer(object):
             return self.handle_cache_miss(host, path, http_request)
 
     def handle_cache_hit(self, host: str, path: str):
+        """
+        Handle a GET request with cache hit.
+
+        :param host: the host in the url
+        :param path: the path in the url
+        :return: an HTTP response
+        """
         self.log(f'Yay! The requested file is in the cache...')
         http_response = HTTPresponse(SUCCESS)
         payload = Cache.read_cache(host, path)
@@ -239,9 +354,17 @@ class ProxyServer(object):
         return http_response
     
     def handle_cache_miss(self, host, path, http_request):
+        """
+        Handle a GET request with cache miss.
+
+        :param host: the host in the url
+        :param path: the path in the url
+        :http_request: the client's HTTP request
+        :return: an HTTP response
+        """
         self.log(f'Oops! No cache hit! Requesting origin server for the file...')
         server_request = HTTPrequest()
-        server_request.instantiate(http_request.method, path)
+        server_request.populate(http_request.method, path)
         server_request.add_headers('Host', host, 'Connection', 'close')
         server_request.append_headers(http_request.get_headers())
         headers, payload = self.contact_server(host, server_request)
@@ -260,6 +383,13 @@ class ProxyServer(object):
             return HTTPresponse(SERVER_ERROR)
 
     def contact_server(self, host: str, http_request: HTTPrequest):
+        """
+        Uses a socket to make an HTTP request to the web server.
+
+        :param host: the web server host
+        :param http_request: the HTTP request to send to the server
+        :return: the data received from the server
+        """
         self.log(f'Sending the following message from proxy to server:')
         self.log(str(http_request))
         with socket(AF_INET, SOCK_STREAM) as proxy_sock:
@@ -268,6 +398,13 @@ class ProxyServer(object):
             return self.receive(proxy_sock)
     
     def receive(self, sock: socket):
+        """
+        Helper function to receive incoming data using sockets.
+        This function expects the message to follow the HTTP protocol.
+
+        :param sock: the socket used in the connection
+        :return: headers and payload of message
+        """
         headers = b''
         payload = b''
         endl = bytes(HTTPprotocol.delimiter, 'utf-8')
@@ -300,9 +437,20 @@ class ProxyServer(object):
         return headers, payload.decode('utf-8')
     
     def send(self, sock, data):
+        """
+        Helper function to send data via socket.
+
+        :param sock: the socket used in the connection
+        :param data: the decoded data to be sent
+        """
         sock.sendall(bytes(data, 'utf-8'))
     
     def log(self, message):
+        """
+        Helper function to print statements in desired format.
+
+        :param message: to be print to console
+        """
         print(message)
 
 
