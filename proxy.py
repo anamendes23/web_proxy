@@ -389,8 +389,6 @@ class ProxyServer(object):
         :return: an HTTP response
         """
         self.log(f'Oops! No cache hit! Requesting origin server for the file...')
-        extra_headers = {'Cache-hit': 0}
-
         server_request = HTTPrequest()
         server_request.populate(http_request.method, path)
         server_request.add_headers('Host', host, 'Connection', 'close')
@@ -441,7 +439,6 @@ class ProxyServer(object):
         """
         headers = b''
         payload = b''
-        endl = bytes(HTTPprotocol.delimiter, 'utf-8')
         header_endl = bytes(HTTPprotocol.header_delimiter, 'utf-8')
 
         while True:
