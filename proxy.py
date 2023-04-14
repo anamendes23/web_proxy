@@ -48,14 +48,14 @@ class Cache(object):
 
     @staticmethod
     def get_path(host: str, path: str):
-    """
-    Helper function that replaces the '/' characters in the path with '$'
-    to create a standard file naming system for caching.
+        """
+        Helper function that replaces the '/' characters in the path with '$'
+        to create a standard file naming system for caching.
 
-    :param host: the host in the url
-    :param path: the path in the url
-    :return: the formatted file path
-    """
+        :param host: the host in the url
+        :param path: the path in the url
+        :return: the formatted file path
+        """
         # Note: consulted with Justin Thoreson for how to handle
         # the file path for caching
         raw_path = f'{host}{path}'.replace('/', '$')
@@ -63,38 +63,38 @@ class Cache(object):
 
     @staticmethod
     def contains(host: str, path: str):
-    """
-    Helper function to check if a file exists in cache.
+        """
+        Helper function to check if a file exists in cache.
 
-    :param host: the host in the url
-    :param path: the path in the url
-    :return: true if the file is alredy cached
-    """
+        :param host: the host in the url
+        :param path: the path in the url
+        :return: true if the file is alredy cached
+        """
         file_path = Cache.get_path(host, path)
         return file_path.exists()
     
     @staticmethod
     def cache_file(host: str, path: str, payload: str):
-    """
-    Function to store file in cache.
+        """
+        Function to store file in cache.
 
-    :param host: the host in the url
-    :param path: the path in the url
-    :param payload: the contents of the file
-    """
+        :param host: the host in the url
+        :param path: the path in the url
+        :param payload: the contents of the file
+        """
         file_path = Cache.get_path(host, path)
         file_path.write_text(payload)
     
     @staticmethod
     def read_cache(host: str, path: str):
-    """
-    Function to read contents of file in cache.
-    It is assumed that it has been verified that the file exists in cache.
+        """
+        Function to read contents of file in cache.
+        It is assumed that it has been verified that the file exists in cache.
 
-    :param host: the host in the url
-    :param path: the path in the url
-    :return: the contents of the file
-    """
+        :param host: the host in the url
+        :param path: the path in the url
+        :return: the contents of the file
+        """
         file_path = Cache.get_path(host, path)
         return file_path.read_text()
 
@@ -109,12 +109,12 @@ class HTTPprotocol(object):
 
     @staticmethod
     def is_supported_version(request_version: float):
-    """
-    Helper function to verify if the version is supported.
+        """
+        Helper function to verify if the version is supported.
 
-    :param request_version: the version specified in the HTTP request
-    :return: true if request_version is supported
-    """
+        :param request_version: the version specified in the HTTP request
+        :return: true if request_version is supported
+        """
         return request_version <= HTTPprotocol.supported_version
 
 
@@ -219,8 +219,8 @@ class HTTPresponse(object):
     
     def __repr__(self):
         response = f'HTTP/{self.version} {self.status_code} {self.status_msg}{HTTPprotocol.delimiter}'
-        for header in self.headers:
-            response += f"{header}{HTTPprotocol.delimiter}"
+        for key, value in self.headers.items():
+            response += f"{key}: {value}{HTTPprotocol.delimiter}"
         response += f'{HTTPprotocol.delimiter}{self.body}'
         return response
     
@@ -289,11 +289,9 @@ class ProxyServer(object):
                 self.log(f'Received a client connection from {client_addr}')
                 self.handle_connection(client)
             except KeyboardInterrupt as e:
+                self.listener.close()
                 self.log(f'\nServer is shutting down...\n')
                 exit(0)
-            except Exception as e:
-                print(str(e))
-                exit(1)
     
     def handle_connection(self, client: socket):
         """ 
@@ -302,20 +300,13 @@ class ProxyServer(object):
 
         :param client: socket from client connection
         """
-        headers, payload = self.receive(client)
-        self.log(f'Received a message from this client: {headers}{payload}')
-
-        http_request = HTTPrequest()
-        http_request.build_from_raw(headers)
-        http_request.set_body(payload)
-
-        if not HTTPprotocol.is_supported_version(http_request.get_version()):
+        try:
+            headers, payload = self.receive(client)
+            self.log(f'Received a message from this client: {headers}{payload}')
+        except:
             http_response = HTTPresponse(SERVER_ERROR)
         else:
-            if http_request.get_method() == 'GET':
-                http_response = self.handle_get_request(http_request)
-            else:
-                http_response = HTTPresponse(SERVER_ERROR)
+            http_response = self.handle_http_request(headers, payload)
 
         self.log(f'Now responding to the client...')
         self.send(client, str(http_response))
@@ -323,12 +314,39 @@ class ProxyServer(object):
         self.log(f'All done! Closing socket...\n\n')
         client.close()
     
+    def handle_http_request(self, headers: str, payload: str):
+        """
+        Gets the data received by the client, parses it into an HTTPrequest object
+        and handles the request.
+
+        :param headers: the raw headers of the request
+        :param payload: the payload of the request
+        :return: the http response to be sent back to the client
+        """
+        try:
+            http_request = HTTPrequest()
+            http_request.build_from_raw(headers)
+            http_request.set_body(payload)
+        except:
+            return HTTPresponse(SERVER_ERROR)
+
+        if not HTTPprotocol.is_supported_version(http_request.get_version()):
+            self.log(f'Oops, this HTTP version ({http_request.get_version()}) is not supported!')
+            http_response = HTTPresponse(SERVER_ERROR)
+        else:
+            if http_request.get_method() == 'GET':
+                http_response = self.handle_get_request(http_request)
+            else:
+                http_response = HTTPresponse(SERVER_ERROR)
+        
+        return http_response
+
     def handle_get_request(self, http_request: HTTPrequest):
         """
         Fulfill client's HTTP GET request
         
         :param http_request: the client's HTTP request
-        :retur: an HTTP response
+        :return: an HTTP response
         """
         parsed_url = urlparse(http_request.get_uri())
         host = parsed_url.hostname
@@ -350,7 +368,7 @@ class ProxyServer(object):
         http_response = HTTPresponse(SUCCESS)
         payload = Cache.read_cache(host, path)
         http_response.set_body(payload)
-        http_response.add_headers('Content-length', len(payload), 'Connection', 'close')
+        http_response.add_headers('Content-length', len(payload), 'Connection', 'close', 'Cache-Hit', 1)
         return http_response
     
     def handle_cache_miss(self, host, path, http_request):
@@ -363,22 +381,29 @@ class ProxyServer(object):
         :return: an HTTP response
         """
         self.log(f'Oops! No cache hit! Requesting origin server for the file...')
+        extra_headers = {'Cache-hit': 0}
+
         server_request = HTTPrequest()
         server_request.populate(http_request.method, path)
         server_request.add_headers('Host', host, 'Connection', 'close')
         server_request.append_headers(http_request.get_headers())
-        headers, payload = self.contact_server(host, server_request)
-        tokens = headers.split(HTTPprotocol.delimiter)
-        first_line_tokens = tokens[0].split(' ')
-        status_code = int(first_line_tokens[1])
+        try:
+            headers, payload = self.contact_server(host, server_request)
+            tokens = headers.split(HTTPprotocol.delimiter)
+            first_line_tokens = tokens[0].split(' ')
+            status_code = int(first_line_tokens[1])
+        except:
+            return HTTPresponse(SERVER_ERROR)
+        
+        http_response = ''.join([headers, '\r\nCache-Hit: 0', HTTPprotocol.header_delimiter, payload])
         if status_code == SUCCESS:
             self.log(f'Response received from server, and status code is 200! Write to cache, save time next time...')
             Cache.cache_file(host, path, payload)
-            return self.handle_cache_hit(host, path)
+            return http_response
 
         self.log(f'Response received from server, but status code is not 200! No cache writing...')
         if status_code in HTTPresponse.status_msgs:
-            return HTTPresponse(status_code)
+            return http_response
         else:
             return HTTPresponse(SERVER_ERROR)
 
