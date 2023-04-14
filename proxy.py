@@ -209,12 +209,12 @@ class HTTPresponse(object):
         500: 'Internal Error',
     }
 
-    def __init__(self, status_code: int):
+    def __init__(self, status_code: int, default_headers: bool = True):
         # put the raw response together into an http response
         self.status_code = status_code
         self.status_msg = HTTPresponse.status_msgs[status_code]
         self.version = HTTPprotocol.supported_version
-        self.headers = {}
+        self.headers = self.get_default_headers() if default_headers else {}
         self.body = ''
     
     def __repr__(self):
@@ -223,6 +223,12 @@ class HTTPresponse(object):
             response += f"{key}: {value}{HTTPprotocol.delimiter}"
         response += f'{HTTPprotocol.delimiter}{self.body}'
         return response
+    
+    def get_default_headers(self):
+        return {
+            'Connection': 'close',
+            'Cache-Hit': '0'
+        }
     
     def add_headers(self, *kvp):
         """
@@ -304,6 +310,7 @@ class ProxyServer(object):
             headers, payload = self.receive(client)
             self.log(f'Received a message from this client: {headers}{payload}')
         except:
+            self.log(f'Malformed message from client...')
             http_response = HTTPresponse(SERVER_ERROR)
         else:
             http_response = self.handle_http_request(headers, payload)
@@ -337,6 +344,7 @@ class ProxyServer(object):
             if http_request.get_method() == 'GET':
                 http_response = self.handle_get_request(http_request)
             else:
+                self.log(f'HTTP method {http_request.get_method()} not supported...')
                 http_response = HTTPresponse(SERVER_ERROR)
         
         return http_response
@@ -365,7 +373,7 @@ class ProxyServer(object):
         :return: an HTTP response
         """
         self.log(f'Yay! The requested file is in the cache...')
-        http_response = HTTPresponse(SUCCESS)
+        http_response = HTTPresponse(SUCCESS, False)
         payload = Cache.read_cache(host, path)
         http_response.set_body(payload)
         http_response.add_headers('Content-length', len(payload), 'Connection', 'close', 'Cache-Hit', 1)
@@ -393,6 +401,7 @@ class ProxyServer(object):
             first_line_tokens = tokens[0].split(' ')
             status_code = int(first_line_tokens[1])
         except:
+            self.log(f'There was an issue contacting the server...')
             return HTTPresponse(SERVER_ERROR)
         
         http_response = ''.join([headers, '\r\nCache-Hit: 0', HTTPprotocol.header_delimiter, payload])
