@@ -40,6 +40,7 @@ class Cache(object):
     This Cache class is not generic, but built to work with the Web Proxy.
     """
     root_path = './cache'
+    default_file = 'root'
 
     def __init__(self):
         cache_dir = Path(Cache.root_path)
@@ -58,8 +59,7 @@ class Cache(object):
         """
         # Note: consulted with Justin Thoreson for how to handle
         # the file path for caching
-        raw_path = f'{host}{path}'.replace('/', '$')
-        return Path(f'{Cache.root_path}/{raw_path}')
+        return Path(f'{Cache.root_path}/{host}{path}')
 
     @staticmethod
     def contains(host: str, path: str):
@@ -82,6 +82,11 @@ class Cache(object):
         :param path: the path in the url
         :param payload: the contents of the file
         """
+        dir_path = path[0:path.rindex('/')]
+        dir_full_path = Cache.get_path(host, dir_path)
+        dir_full_path.mkdir(parents=True, exist_ok=True)
+        if dir_path == path or len(dir_path) == 0:
+            path += Cache.default_file
         file_path = Cache.get_path(host, path)
         file_path.write_text(payload)
     
@@ -95,6 +100,9 @@ class Cache(object):
         :param path: the path in the url
         :return: the contents of the file
         """
+        dir_path = path[0:path.rindex('/')]
+        if dir_path == path or len(dir_path) == 0:
+            path += Cache.default_file
         file_path = Cache.get_path(host, path)
         return file_path.read_text()
 
@@ -412,7 +420,9 @@ class ProxyServer(object):
         if status_code in HTTPresponse.status_msgs:
             return http_response
         else:
-            return HTTPresponse(SERVER_ERROR)
+            http_response = HTTPresponse(SERVER_ERROR)
+            http_response.set_body(payload)
+            return http_response
 
     def contact_server(self, host: str, http_request: HTTPrequest):
         """
